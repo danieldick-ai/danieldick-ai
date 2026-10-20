@@ -1,0 +1,275 @@
+{
+  "name": "Webhook HMAC and Replay - Receiver (sanitized demo)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "portfolio-webhook-demo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2768,
+        592
+      ],
+      "name": "WEBHOOK - Secure Receive",
+      "id": "sample-1-node-1"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "binaryData": true,
+        "type": "SHA256",
+        "dataPropertyName": "computed_signature",
+        "secret": ""
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        -2528,
+        592
+      ],
+      "name": "HMAC - Raw Body SHA256",
+      "id": "sample-1-node-2",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { timingSafeEqual } = require('crypto');\n\nconst headers = $json.headers ?? {};\nconst body = $json.body ?? {};\n\nconst supplied = String(headers['x-portfolio-signature'] ?? '').trim().toLowerCase();\nconst computed = String($json.computed_signature ?? '').trim().toLowerCase();\n\nlet hmacOk = false;\nif (/^[0-9a-f]{64}$/.test(supplied) && /^[0-9a-f]{64}$/.test(computed)) {\n  const a = Buffer.from(supplied, 'hex');\n  const b = Buffer.from(computed, 'hex');\n  if (a.length === b.length) hmacOk = timingSafeEqual(a, b);\n}\n\nconst ts = Number(body._ts);\nconst now = Math.floor(Date.now() / 1000);\nconst ageSeconds = Number.isFinite(ts) ? Math.abs(now - ts) : null;\nconst timestampOk = Number.isInteger(ts) && ageSeconds <= 300;\n\nconst nonce = String(body._nonce ?? '').trim();\nconst nonceOk = /^[A-Za-z0-9._:-]{16,128}$/.test(nonce);\n\nconst reasons = [];\nif (!hmacOk) reasons.push('invalid_hmac');\nif (!timestampOk) reasons.push('timestamp_outside_300s_window');\nif (!nonceOk) reasons.push('invalid_nonce');\n\nreturn [{\n  json: {\n    headers,\n    body,\n    security: {\n      hmac_ok: hmacOk,\n      timestamp_ok: timestampOk,\n      nonce_ok: nonceOk,\n      age_seconds: ageSeconds,\n      nonce,\n      reasons\n    },\n    security_pass: (hmacOk && timestampOk && nonceOk) ? 1 : 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2288,
+        592
+      ],
+      "name": "VERIFY - Signature + Timestamp",
+      "id": "sample-1-node-3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a1000000-0000-4000-8000-000000000005",
+              "leftValue": "={{ $json.security_pass }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2048,
+        592
+      ],
+      "name": "IF - Security Valid?",
+      "id": "sample-1-node-4"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH cleanup AS (\n  DELETE FROM portfolio_webhook_replay_guard\n  WHERE received_at < NOW() - INTERVAL '10 minutes'\n),\ninserted AS (\n  INSERT INTO portfolio_webhook_replay_guard (nonce, received_at)\n  VALUES ($1, NOW())\n  ON CONFLICT (nonce) DO NOTHING\n  RETURNING nonce\n)\nSELECT CASE WHEN EXISTS (SELECT 1 FROM inserted) THEN 1 ELSE 0 END AS replay_pass;",
+        "options": {
+          "queryReplacement": "={{ [ $('VERIFY - Signature + Timestamp').item.json.security.nonce ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -1808,
+        512
+      ],
+      "name": "POSTGRES - Replay Guard",
+      "id": "sample-1-node-5"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a1000000-0000-4000-8000-000000000008",
+              "leftValue": "={{ $json.replay_pass }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1568,
+        512
+      ],
+      "name": "IF - Nonce Fresh?",
+      "id": "sample-1-node-6"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, status: 'ACCEPTED', event_id: $('VERIFY - Signature + Timestamp').item.json.body.event_id ?? null, security: { hmac: true, timestamp: true, replay: false } } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1328,
+        432
+      ],
+      "name": "RESPONSE - 200 Accepted",
+      "id": "sample-1-node-7"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, status: 'REPLAY_REJECTED', reason: 'nonce_already_seen' } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1328,
+        592
+      ],
+      "name": "RESPONSE - 409 Replay",
+      "id": "sample-1-node-8"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, status: 'UNAUTHORIZED', reasons: $('VERIFY - Signature + Timestamp').item.json.security.reasons } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1808,
+        720
+      ],
+      "name": "RESPONSE - 401 Invalid Security",
+      "id": "sample-1-node-9"
+    }
+  ],
+  "connections": {
+    "WEBHOOK - Secure Receive": {
+      "main": [
+        [
+          {
+            "node": "HMAC - Raw Body SHA256",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HMAC - Raw Body SHA256": {
+      "main": [
+        [
+          {
+            "node": "VERIFY - Signature + Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VERIFY - Signature + Timestamp": {
+      "main": [
+        [
+          {
+            "node": "IF - Security Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Security Valid?": {
+      "main": [
+        [
+          {
+            "node": "POSTGRES - Replay Guard",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESPONSE - 401 Invalid Security",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POSTGRES - Replay Guard": {
+      "main": [
+        [
+          {
+            "node": "IF - Nonce Fresh?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Nonce Fresh?": {
+      "main": [
+        [
+          {
+            "node": "RESPONSE - 200 Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RESPONSE - 409 Replay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

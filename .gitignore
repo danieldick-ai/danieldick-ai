@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+*credentials*.json
+*backup*
+*.sql.gz
+*.dump
+node_modules/

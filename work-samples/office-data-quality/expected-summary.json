@@ -1,0 +1,15 @@
+{
+  "status": "REVIEW_REQUIRED",
+  "summary": {
+    "records": 6,
+    "records_with_review": 5,
+    "possible_duplicates": 2,
+    "gross_total": 4229.29,
+    "issue_types": [
+      "Mögliche Dublette",
+      "Bruttobetrag fehlt/ungültig",
+      "Rechnungsdatum fehlt/ungültig",
+      "Rechnungsnummer fehlt"
+    ]
+  }
+}

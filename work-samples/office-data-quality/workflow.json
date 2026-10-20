@@ -1,0 +1,110 @@
+{
+  "name": "Office Data Quality (synthetic demo)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        320
+      ],
+      "name": "Start Demo",
+      "id": "sample-3-node-1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{invoices:[{\"supplier\": \" Example Office GmbH \", \"invoice_date\": \"01.08.2026\", \"invoice_number\": \"EX-1042\", \"gross\": \"1.249,90 €\", \"payment_terms\": \"14 Tage\", \"cost_center\": \"verw.\", \"status\": \"OFFEN\"}, {\"supplier\": \"example office gmbh\", \"invoice_date\": \"1/8/2026\", \"invoice_number\": \"EX 1042\", \"gross\": \"1249,90\", \"payment_terms\": \"14\", \"cost_center\": \"VERWALTUNG\", \"status\": \"offen\"}, {\"supplier\": \"Example IT GmbH\", \"invoice_date\": \"03-08-2026\", \"invoice_number\": \"IT-0001\", \"gross\": \"899.00 EUR\", \"payment_terms\": \"30 Tage\", \"cost_center\": \"IT\", \"status\": \"bezahlt\"}, {\"supplier\": \"Example Devices GmbH\", \"invoice_date\": \"09.08.2026\", \"invoice_number\": \"DEV-0001\", \"gross\": \"invalid\", \"payment_terms\": \"14 Tage\", \"cost_center\": \"Verwaltung\", \"status\": \"offen\"}, {\"supplier\": \"Example Logistics GmbH\", \"invoice_date\": \"\", \"invoice_number\": \"LOG-0001\", \"gross\": \"740,50\", \"payment_terms\": \"30 Tage\", \"cost_center\": \"Lager\", \"status\": \"offen\"}, {\"supplier\": \"Example Print GmbH\", \"invoice_date\": \"12.08.2026\", \"invoice_number\": \"\", \"gross\": \"89,99\", \"payment_terms\": \"14 Tage\", \"cost_center\": \"Verw.\", \"status\": \"offen\"}]}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        320
+      ],
+      "name": "Generate Sample Input",
+      "id": "sample-3-node-2"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $json.invoices ?? [];\n\nfunction parseAmount(value) {\n  if (value === null || value === undefined || value === '') return null;\n  let s = String(value).replace(/\\s/g,'').replace(/EUR/gi,'').replace(/€/g,'');\n  if (/^\\d{1,3}(\\.\\d{3})+,\\d{2}$/.test(s)) s = s.replace(/\\./g,'').replace(',','.');\n  else if (/^\\d+,\\d{1,2}$/.test(s)) s = s.replace(',','.');\n  const n = Number(s);\n  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;\n}\n\nfunction parseDate(value) {\n  if (!value) return null;\n  const s = String(value).trim();\n  let m;\n  if ((m = s.match(/^(\\d{1,2})[.\\/-](\\d{1,2})[.\\/-](\\d{4})$/))) {\n    return new Date(Date.UTC(Number(m[3]), Number(m[2])-1, Number(m[1]))).toISOString().slice(0,10);\n  }\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;\n  return null;\n}\n\nfunction normalizeSupplier(value) {\n  const raw = String(value ?? '').trim().replace(/\\s+/g,' ');\n  const key = raw.toLowerCase()\n    .replace(/ü/g,'u').replace(/ö/g,'o').replace(/ä/g,'a').replace(/ß/g,'ss')\n    .replace(/[^a-z0-9]/g,'');\n  const aliases = {\n    'exampleofficegmbh':'Example Office GmbH',\n    'exampleofficegmbh':'Example Office GmbH',\n    'exampleitgmbh':'Example IT GmbH',\n    'exampledevicesgmbh':'Example Devices GmbH',\n    'examplelogisticsgmbh':'Example Logistics GmbH',\n    'exampleprintgmbh':'Example Print GmbH'\n  };\n  return aliases[key] ?? raw;\n}\n\nfunction normalizeInvoiceNumber(value) {\n  const s = String(value ?? '').trim().toUpperCase();\n  return s ? s.replace(/\\s+/g,'-') : '';\n}\n\nfunction paymentDays(value) {\n  const s = String(value ?? '').trim().toLowerCase();\n  if (s === 'sofort') return 0;\n  const m = s.match(/\\d+/);\n  return m ? Number(m[0]) : null;\n}\n\nfunction normalizeCostCenter(value) {\n  const s = String(value ?? '').trim().toLowerCase();\n  const map = {'verw.':'Verwaltung','verwaltung':'Verwaltung','it':'IT','lager':'Lager'};\n  return map[s] ?? (s ? s.charAt(0).toUpperCase()+s.slice(1) : '');\n}\n\nfunction normalizeStatus(value) {\n  const s = String(value ?? '').trim().toLowerCase();\n  const map = {'offen':'Offen','bezahlt':'Bezahlt','storniert':'Storniert'};\n  return map[s] ?? (s ? s.charAt(0).toUpperCase()+s.slice(1) : '');\n}\n\nfunction dueDate(invoiceDate, days) {\n  if (!invoiceDate || days === null) return null;\n  const d = new Date(invoiceDate+'T00:00:00Z');\n  d.setUTCDate(d.getUTCDate()+days);\n  return d.toISOString().slice(0,10);\n}\n\nconst cleaned = rows.map((row,index) => {\n  const invoiceDate = parseDate(row.invoice_date);\n  const gross = parseAmount(row.gross);\n  const days = paymentDays(row.payment_terms);\n  const invoiceNumber = normalizeInvoiceNumber(row.invoice_number);\n  const issues = [];\n  if (!invoiceDate) issues.push('Rechnungsdatum fehlt/ungültig');\n  if (!invoiceNumber) issues.push('Rechnungsnummer fehlt');\n  if (gross === null) issues.push('Bruttobetrag fehlt/ungültig');\n  if (!row.cost_center) issues.push('Kostenstelle fehlt');\n\n  return {\n    row_id:index+1,\n    supplier:normalizeSupplier(row.supplier),\n    invoice_date:invoiceDate,\n    invoice_number:invoiceNumber,\n    gross,\n    payment_days:days,\n    due_date:dueDate(invoiceDate,days),\n    cost_center:normalizeCostCenter(row.cost_center),\n    status:normalizeStatus(row.status),\n    duplicate:false,\n    issues\n  };\n});\n\nconst counts = new Map();\nfor (const r of cleaned) {\n  if (!r.invoice_number || r.gross === null) continue;\n  const key = `${r.invoice_number}|${r.gross.toFixed(2)}`;\n  counts.set(key,(counts.get(key) ?? 0)+1);\n}\nfor (const r of cleaned) {\n  if (!r.invoice_number || r.gross === null) continue;\n  const key = `${r.invoice_number}|${r.gross.toFixed(2)}`;\n  if ((counts.get(key) ?? 0) > 1) {\n    r.duplicate = true;\n    r.issues.push('Mögliche Dublette');\n  }\n}\n\nreturn [{json:{cleaned}}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        320
+      ],
+      "name": "Normalize and Validate",
+      "id": "sample-3-node-3"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $json.cleaned ?? [];\nconst reviewRows = rows.filter(r => r.issues.length > 0);\nconst duplicateRows = rows.filter(r => r.duplicate);\nconst validGross = rows.filter(r => typeof r.gross === 'number');\nconst grossTotal = Math.round(validGross.reduce((sum,r)=>sum+r.gross,0)*100)/100;\nconst uniqueIssueTypes = [...new Set(reviewRows.flatMap(r=>r.issues))];\nconst status = reviewRows.length === 0 ? 'OK' : 'REVIEW_REQUIRED';\n\nreturn [{\n  json:{\n    status,\n    summary:{\n      records:rows.length,\n      records_with_review:reviewRows.length,\n      possible_duplicates:duplicateRows.length,\n      gross_total:grossTotal,\n      issue_types:uniqueIssueTypes\n    },\n    notification_message: status === 'OK'\n      ? `Datenprüfung abgeschlossen: ${rows.length} Datensätze, keine Prüfhinweise.`\n      : `Datenprüfung abgeschlossen: ${rows.length} Datensätze, ${reviewRows.length} mit Prüfhinweis, ${duplicateRows.length} mögliche Dubletten.`,\n    cleaned_rows:rows,\n    next_step:status === 'OK'\n      ? 'Automatische Weiterverarbeitung möglich.'\n      : 'Prüffälle vor Weiterverarbeitung kontrollieren.'\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        320
+      ],
+      "name": "Build Summary and Notification",
+      "id": "sample-3-node-4"
+    },
+    {
+      "parameters": {
+        "content": "## Demo 2\nCredential-freier Kernworkflow.\n\n**Ablauf:** Eingabedaten → Normalisierung → Qualitätsprüfung → Ergebnis + vorbereitete Benachrichtigung.\n\nSpäter: Webhook/Form/Datei-Eingang davor; E-Mail/Teams/Slack/Sheets dahinter.",
+        "height": 240,
+        "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Hinweis",
+      "id": "sample-3-node-5"
+    }
+  ],
+  "connections": {
+    "Start Demo": {
+      "main": [
+        [
+          {
+            "node": "Generate Sample Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Sample Input": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize and Validate": {
+      "main": [
+        [
+          {
+            "node": "Build Summary and Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

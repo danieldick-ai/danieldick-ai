@@ -1,0 +1,276 @@
+{
+  "name": "Webhook HMAC and Replay - Sender (sanitized demo)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        0
+      ],
+      "name": "Manual Trigger",
+      "id": "sample-2-node-1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b2000000-0000-4000-8000-000000000002",
+              "name": "test_mode",
+              "value": "replay",
+              "type": "string"
+            },
+            {
+              "id": "b2000000-0000-4000-8000-000000000003",
+              "name": "timestamp_offset_seconds",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "b2000000-0000-4000-8000-000000000004",
+              "name": "tamper_signature",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "b2000000-0000-4000-8000-000000000005",
+              "name": "fixed_nonce",
+              "value": "portfolio-replay-demo-001",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        96,
+        0
+      ],
+      "name": "CONFIG - Test Scenario",
+      "id": "sample-2-node-2"
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "generated_nonce"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        304,
+        0
+      ],
+      "name": "NONCE - Generate UUID",
+      "id": "sample-2-node-3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const offset = Number($json.timestamp_offset_seconds ?? 0);\nconst ts = Math.floor(Date.now() / 1000) + offset;\nconst nonce = $json.test_mode === 'replay'\n  ? String($json.fixed_nonce)\n  : String($json.generated_nonce);\n\nconst payload = {\n  event_id: 'sample-event-001',\n  customer_id: 'sample-customer-001',\n  amount: 49.90,\n  _ts: ts,\n  _nonce: nonce\n};\n\nreturn [{\n  json: {\n    ...$json,\n    payload,\n    raw_body: JSON.stringify(payload)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        0
+      ],
+      "name": "BUILD - Exact Raw JSON Body",
+      "id": "sample-2-node-4"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.raw_body }}",
+        "dataPropertyName": "signature",
+        "secret": ""
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        752,
+        0
+      ],
+      "name": "HMAC - Sign Raw Body",
+      "id": "sample-2-node-5",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const good = String($json.signature ?? '');\nconst signatureToSend = $json.tamper_signature\n  ? '0'.repeat(64)\n  : good;\n\nreturn [{\n  json: {\n    ...$json,\n    signature_to_send: signatureToSend\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        0
+      ],
+      "name": "TEST - Optional Signature Tamper",
+      "id": "sample-2-node-6"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5678/webhook/portfolio-webhook-demo",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-portfolio-signature",
+              "value": "={{ $json.signature_to_send }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.raw_body }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1136,
+        0
+      ],
+      "name": "POST - Call Secure Webhook",
+      "id": "sample-2-node-7"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "be22a781-8fe7-4602-85a6-8bf93396133c",
+              "name": "statusCode",
+              "value": "={{ $json.statusCode }}",
+              "type": "string"
+            },
+            {
+              "id": "8f6691f1-2a5e-4a8e-9f5c-0be467fe7dfc",
+              "name": "status",
+              "value": "={{ $json.body?.status }}",
+              "type": "string"
+            },
+            {
+              "id": "c8fba0d6-a13b-4e55-b995-7abfdecf16da",
+              "name": "ok",
+              "value": "={{ $json.body?.ok }}",
+              "type": "string"
+            },
+            {
+              "id": "690a8a6e-3d78-4559-b6b2-265ab0f79b6e",
+              "name": "body",
+              "value": "={{ JSON.stringify($json.body) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1296,
+        0
+      ],
+      "name": "RESULT - Compact",
+      "id": "sample-2-node-8"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "CONFIG - Test Scenario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CONFIG - Test Scenario": {
+      "main": [
+        [
+          {
+            "node": "NONCE - Generate UUID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NONCE - Generate UUID": {
+      "main": [
+        [
+          {
+            "node": "BUILD - Exact Raw JSON Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BUILD - Exact Raw JSON Body": {
+      "main": [
+        [
+          {
+            "node": "HMAC - Sign Raw Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HMAC - Sign Raw Body": {
+      "main": [
+        [
+          {
+            "node": "TEST - Optional Signature Tamper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TEST - Optional Signature Tamper": {
+      "main": [
+        [
+          {
+            "node": "POST - Call Secure Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST - Call Secure Webhook": {
+      "main": [
+        [
+          {
+            "node": "RESULT - Compact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
