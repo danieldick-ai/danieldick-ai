@@ -20,6 +20,8 @@ The standalone checks on 20 October 2026 executed all three Code nodes from this
 
 See `expected-summary.json` and run `node work-samples/check-samples.cjs` from the repository root.
 
+On 22 November 2026, the sanitized `workflow.json` was freshly imported into n8n and run manually. The output matched `expected-summary.json`: `REVIEW_REQUIRED`, 6 records, 5 requiring review, 2 flagged as possible duplicates, and a diagnostic gross total of `4229.29`.
+
 ## Limits
 
-This is a format-normalization demo, not accounting software. Duplicate detection uses invoice number plus amount and can flag different suppliers. Date parsing does not fully reject impossible calendar dates. The summary flags review cases rather than blocking an external action; no such action is connected. Human review is required before downstream use. A fresh import/run of this sanitized version in n8n has not been performed during publication.
+This is a format-normalization demo, not accounting software. Duplicate detection uses invoice number plus amount and can flag different suppliers. Date parsing does not fully reject impossible calendar dates. The summary flags review cases rather than blocking an external action; no such action is connected. Human review is required before downstream use.

@@ -30,7 +30,9 @@
 
 The original local project was tested on 27 September 2026 with n8n 2.40.7 and PostgreSQL 18: valid request 200, tampered signature 401, expired timestamp 401 and repeated nonce 409. Its original receiver and sender exports were matched to the recorded SHA-256 values before making these public copies.
 
-On 20 October 2026, the standalone checks executed the sanitized signature/timestamp/nonce verification logic and inspected workflow structure. **The sanitized exports have not been re-imported or tested end to end with n8n/PostgreSQL.** The standalone tests do not exercise the Crypto node, raw-body parsing, HTTP response nodes, database cleanup/concurrency or credential setup.
+On 20 October 2026, the standalone checks executed the sanitized signature/timestamp/nonce verification logic and inspected workflow structure. The standalone tests do not exercise the Crypto node, raw-body parsing, HTTP response nodes, database cleanup/concurrency or credential setup.
+
+On 22 November 2026, the sanitized receiver passed an end-to-end test in an isolated n8n 2.40.7 instance backed by PostgreSQL 18. Direct requests from PowerShell returned 200 for a valid request, 401 for an invalid signature, 401 for an expired timestamp, and 200 followed by 409 when the same nonce was submitted twice. Validation of the companion n8n sender workflow is still pending.
 
 Sanitization removed credentials, secrets, pinned data and instance/workflow metadata; replaced node IDs, sample labels and the demo table/path; deactivated exports and disabled HMAC nodes until local configuration. The originals are unchanged.
 
